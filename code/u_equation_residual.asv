@@ -1,0 +1,93 @@
+function [Re] = cardiac_electro_u_eqn(e, testsp, teste, vars)
+% cardiac_electro_u_eqn -- Cardiac Electrophysiology FEM
+%
+% Computes element residual for the normalized membrane potential equation:
+%
+%   R_i = (1/dt) ∫ φ_i (u^{n+1} - u^n) dΩ 
+%       + ∫ ∇φ_i · D∇u^{n+1} dΩ 
+%       - ∫ φ_i f(u^{n+1}, z^n) dΩ = 0
+%
+% where f(u,z) = ku(1-u)(u-a) - uz  (Aliev-Panfilov ionic model)
+%
+% Using ISOTROPIC D = 1 for initial validation
+%
+% Inputs:
+%   e       - element index
+%   testsp  - test function space
+%   teste   - test functions evaluated at quadrature points
+%   vars    - structure containing:
+%             vars.u      - current solution space with u.u coefficients
+%             vars.u_old  - previous time step solution
+%             vars.z      - gating variable (from previous iteration)
+%             vars.dt     - time step
+%
+% Output:
+%   Re      - element residual vector
+%
+% by Sebastian (AFEM Project)
+
+    % Parameters (Aliev-Panfilov model)
+    k = 8.0;
+    a = 0.15;
+    D = 1.0;  % Isotropic diffusion coefficient for validation
+    
+    % Extract time step
+    dt = vars.dt;
+    
+    % Get local nodal values for this element
+    % Current u^{n+1} iterate
+    u_local = vars.u.u(vars.u.t(e,:));
+    
+    % Previous time step u^n
+    u_old_local = vars.u_old.u(vars.u_old.t(e,:));
+    
+    % Gating variable z^n (from previous time step, semi-implicit)
+    z_local = vars.z.u(vars.z.t(e,:));
+    
+    % Evaluate fields at quadrature points
+    % Number of quadrature points
+    nqp = size(teste.gw, 1);
+    
+    % u^{n+1} at quadrature points
+    u_qp = teste.y * u_local;
+    
+    % u^n at quadrature points
+    u_old_qp = teste.y * u_old_local;
+    
+    % z^n at quadrature points
+    z_qp = teste.y * z_local;
+    
+    % Gradient of u^{n+1} at quadrature points: [du/dx1, du/dx2]
+    grad_u_qp = zeros(nqp, 2);
+    grad_u_qp(:,1) = teste.dy(:,:,1) * u_local;  % du/dx1
+    grad_u_qp(:,2) = teste.dy(:,:,2) * u_local;  % du/dx2
+    
+    % Compute ionic current f(u,z) = ku(1-u)(u-a) - uz
+    f_ion_qp = k * u_qp .* (1 - u_qp) .* (u_qp - a) - u_qp .* z_qp;
+    
+    % Assemble element residual
+    ne = size(testsp.t, 2);  % Number of local nodes
+    Re = zeros(ne, 1);
+    
+    for i = 1:ne
+        % Test function and its gradient at all quadrature points
+        phi_i = teste.y(:, i);           % φ_i at all qp
+        dphi_i_dx1 = teste.dy(:, i, 1);  % ∂φ_i/∂x1 at all qp
+        dphi_i_dx2 = teste.dy(:, i, 2);  % ∂φ_i/∂x2 at all qp
+        
+        % Term 1: Mass term (1/dt) ∫ φ_i (u^{n+1} - u^n) dΩ
+        mass_term = (1/dt) * dot(teste.gw, phi_i .* (u_qp - u_old_qp));
+        
+        % Term 2: Stiffness term ∫ ∇φ_i · D∇u dΩ (isotropic D)
+        % D∇u = D * [du/dx1; du/dx2]
+        stiff_term = D * dot(teste.gw, dphi_i_dx1 .* grad_u_qp(:,1) + ...
+                                        dphi_i_dx2 .* grad_u_qp(:,2));
+        
+        % Term 3: Ionic term -∫ φ_i f(u,z) dΩ
+        ion_term = -dot(teste.gw, phi_i .* f_ion_qp);
+        
+        % Total residual for node i
+        Re(i) = mass_term + stiff_term + ion_term;
+    end
+
+end

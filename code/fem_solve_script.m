@@ -64,8 +64,8 @@ while (iter == 0) || (residual_vector_norm > nonlinear_tol)
 
   % Making the global residual vector + computing the norm ...
     R = [R1; R2];
-    residual_vector_norm = norm(R,2);
-    disp(['Current residual (iter=' num2str(iter) '): ' num2str(residual_vector_norm)])
+    residual_vector_norm = norm(R,2); 
+    )])
     if(residual_vector_norm < nonlinear_tol)
       continue
     end
