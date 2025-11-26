@@ -1,1 +1,1 @@
-# fem-cardiac-electrophysiology
+# FEM-cardiac-electrophysiology
