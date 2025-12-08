@@ -3,8 +3,7 @@ function [Re] = z_equation_residual(e, testsp, teste, vars)
     
     z_local = vars.z.u(vars.z.t(e,:));
     z_old   = vars.z_old.u(vars.z_old.t(e,:));
-    u_old   = vars.u_old.u(vars.u_old.t(e,:));  % Using u from previous iteration
-    
+    u_old   = vars.u_old.u(vars.u_old.t(e,:));  
     z_gp = teste.y * z_local;
     z_old_gp = teste.y * z_old;
     u_old_gp = teste.y * u_old;
