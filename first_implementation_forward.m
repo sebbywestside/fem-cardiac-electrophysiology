@@ -1,0 +1,134 @@
+clear; close all; clc;
+
+%% Parameters
+k = 8;
+a = 0.15;
+eps = 0.01;
+D = 1;
+dt = 0.1;
+T_final = 500;
+N_steps = ceil(T_final/dt);
+stim_radius = 7;
+purkinje_sites = [83, 75; 19, 44; 124, 10];
+
+%% Load mesh
+load('heart-sa3.mat');
+Omega.e = fem_get_basis(Omega.p, 5, 'triangle');
+Omega.name = 'Omega';
+Omega.dm = 2;
+n_nodes = size(Omega.x, 1);
+
+%% Setup u space
+u_sp.name = 'u';
+u_sp.dm = 1;
+u_sp.p = Omega.p;
+u_sp.x = Omega.x;
+u_sp.t = Omega.t;
+u_sp.e = Omega.e;
+
+%% Assemble mass and stiffness matrices
+M = fem_assemble_block_matrix(@mass_matrix, Omega, u_sp, u_sp);
+K = fem_assemble_block_matrix(@stiffness_matrix, Omega, u_sp, u_sp);
+K = D * K;
+A = M/dt + K;
+
+%% Find stimulation nodes
+bndry2 = unique(Omega.b(Omega.b(:,end)==2, 2:3));
+bndry2 = bndry2(:);
+stim_nodes = [];
+for i = 1:size(purkinje_sites,1)
+    for j = 1:length(bndry2)
+        if norm(Omega.x(bndry2(j),:) - purkinje_sites(i,:)) <= stim_radius
+            stim_nodes = [stim_nodes; bndry2(j)];
+        end
+    end
+end
+stim_nodes = unique(stim_nodes);
+
+%% Apply Dirichlet BCs to system matrix
+A_bc = A;
+for i = 1:length(stim_nodes)
+    A_bc(stim_nodes(i), :) = 0;
+    A_bc(stim_nodes(i), stim_nodes(i)) = 1;
+end
+
+%% Initialize
+u = zeros(n_nodes, 1);
+z = zeros(n_nodes, 1);
+u(stim_nodes) = 1;
+activation_time = inf(n_nodes, 1);
+activation_time(stim_nodes) = 0;
+
+% set up live plot
+figure;
+h = trisurf(Omega.t(:,1:3), Omega.x(:,1), Omega.x(:,2), u, 'Facecolor', 'interp', 'LineStyle', 'none');
+%h = trisurf(Omega.t(:,1:3), Omega.x(:,1), Omega.x(:,2), u); % see mesh
+
+colorbar; caxis([0 1]); view(2); axis equal;
+colormap;
+title('t = 0 ms');
+drawnow;
+
+%% Time loop
+fully_activated = false;
+
+for n = 1:N_steps
+    t = n*dt;
+    
+    % ionic current at old time
+    f_ion = k*u.*(1-u).*(u-a) - u.*z;
+    
+    % solve for u_new
+    rhs = (M/dt)*u + M*f_ion;
+    rhs(stim_nodes) = 1;
+    u_new = A_bc \ rhs;
+    
+    % update z (forward Euler)
+    g_z = -eps*(k*u.*(u-a-1) + z);
+    z_new = z + dt*g_z;
+    
+    % track activation
+    newly_active = (u_new > 0.8) & (activation_time == inf);
+    activation_time(newly_active) = t;
+    
+    % check if all nodes have activated
+    if ~fully_activated && all(activation_time < inf)
+        fprintf('Full activation at t = %.1f ms\n', t);
+        fully_activated = true;
+    end
+    
+    % update
+    u = u_new;
+    z = z_new;
+    u(stim_nodes) = 1;
+    
+    % update plot every step
+    set(h, 'CData', u);
+    title(sprintf('t = %.0f ms', t));
+    drawnow;
+    
+    % check stability
+    if any(isnan(u)) || max(abs(u)) > 10
+        error('Unstable at t=%.1f', t);
+    end
+    
+    % stop when propagation has ended (all repolarized after full activation)
+    if fully_activated && max(u) < 0.1
+        fprintf('Propagation complete at t = %.1f ms\n', t);
+        break;
+    end
+end
+
+%% Results
+T_total = max(activation_time(activation_time < inf));
+fprintf('Total activation time: %.1f ms\n', T_total);
+
+% plot activation time map
+figure;
+act_plot = activation_time;
+act_plot(activation_time == inf) = NaN;
+trisurf(Omega.t(:,1:3), Omega.x(:,1), Omega.x(:,2), act_plot, 'Facecolor', 'interp', 'LineStyle', 'none'););
+colorbar; view(2); axis equal;
+colormap;
+title(sprintf('Activation Time (T = %.1f ms)', T_total));
+
