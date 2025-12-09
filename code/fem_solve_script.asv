@@ -3,7 +3,7 @@ clear; close all; clc;
 %% Parameters
 k = 8;
 a = 0.15;
-eps = 0.005;
+eps = 0.01;
 D = 1;
 dt = 0.1;
 T_final = 500;
@@ -11,7 +11,7 @@ N_steps = ceil(T_final/dt);
 stim_radius = 7;
 purkinje_sites = [83, 75; 19, 44; 124, 10];
 crt_sites = [42, 165; 91, 179; 138, 148];
-crt_option = 1;  % choose which CRT lead position (1, 2, or 3) 0 is all 3 in a subplot (not yet implemented)
+crt_option = 2;  % choose which CRT lead position (1, 2, or 3) 0 is all 3 in a subplot (not yet implemented)
 %crt_option_array = [1, 2, 3];
 
 %% Load mesh
